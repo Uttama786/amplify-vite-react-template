@@ -84,6 +84,25 @@
   background: #f8f9fa;
 }
 
+.schema-warning {
+  margin: 1rem 1.5rem;
+  padding: 1rem;
+  background: #fff3cd;
+  border: 2px solid #ffc107;
+  border-radius: 10px;
+  color: #856404;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.schema-warning code {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85em;
+}
+
 .stat-card {
   background: white;
   padding: 1rem;
@@ -324,6 +343,11 @@
   cursor: pointer;
   accent-color: #667eea;
   flex-shrink: 0;
+}
+
+.todo-checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .todo-text {

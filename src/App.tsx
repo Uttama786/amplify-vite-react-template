@@ -17,6 +17,25 @@ function App() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
   const [newTodoContent, setNewTodoContent] = useState('');
+  
+  // Diagnostic: Check if todos have isDone field
+  useEffect(() => {
+    if (todos.length > 0) {
+      const firstTodo = todos[0];
+      const hasIsDoneField = 'isDone' in firstTodo;
+      console.log('Schema check - First todo:', {
+        id: firstTodo.id,
+        hasIsDoneField,
+        isDoneValue: firstTodo.isDone,
+        allFields: Object.keys(firstTodo)
+      });
+      
+      if (!hasIsDoneField) {
+        console.warn('⚠️ WARNING: isDone field not found in todos. The backend schema may need to be updated.');
+        console.warn('Please restart the Amplify sandbox: npx ampx sandbox');
+      }
+    }
+  }, [todos]);
 
   useEffect(() => {
     const subscription = client.models.Todo.observeQuery().subscribe({
@@ -28,24 +47,96 @@ function App() {
   async function createTodo() {
     if (!newTodoContent.trim()) return;
     try {
-      await client.models.Todo.create({ 
-        content: newTodoContent.trim(),
-        isDone: false 
-      });
+      // Try to create with isDone field, but handle gracefully if it doesn't exist
+      const todoData: any = { 
+        content: newTodoContent.trim()
+      };
+      
+      // Check if any existing todo has isDone field to determine if we should include it
+      const hasIsDoneField = todos.length === 0 || todos.some(todo => 'isDone' in todo);
+      if (hasIsDoneField) {
+        todoData.isDone = false;
+      }
+      
+      await client.models.Todo.create(todoData);
       setNewTodoContent('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating todo:', error);
+      const errorMessage = error?.message || 'Unknown error';
+      if (errorMessage.includes('isDone') || errorMessage.includes('isReadOnly') || errorMessage.includes('fields7')) {
+        // Retry without isDone field
+        try {
+          await client.models.Todo.create({ 
+            content: newTodoContent.trim()
+          });
+          setNewTodoContent('');
+        } catch (retryError: any) {
+          alert(`Failed to create todo: ${retryError?.message || 'Unknown error'}`);
+        }
+      } else {
+        alert(`Failed to create todo: ${errorMessage}`);
+      }
     }
   }
 
-  async function toggleTodo(id: string, currentStatus: boolean) {
+  async function toggleTodo(id: string, currentStatus: boolean | null | undefined) {
     try {
-      await client.models.Todo.update({ 
+      // Check if isDone field exists in the schema by checking if any todo has it
+      const hasIsDoneField = todos.some(todo => 'isDone' in todo);
+      
+      if (!hasIsDoneField) {
+        alert('⚠️ Schema Update Required!\n\nThe isDone field is not available yet. Please:\n\n1. Stop the Amplify sandbox (Ctrl+C)\n2. Run: npx ampx sandbox\n3. Wait for deployment to complete\n4. Refresh this page');
+        return;
+      }
+      
+      // Ensure we have a proper boolean value - if undefined/null, default to false
+      const current = currentStatus === true;
+      const newStatus = !current;
+      
+      console.log('Toggling todo:', { id, current, newStatus });
+      
+      const result = await client.models.Todo.update({ 
         id, 
-        isDone: !currentStatus 
+        isDone: newStatus 
       });
-    } catch (error) {
+      
+      console.log('Update result:', result);
+      
+      if (result.errors && result.errors.length > 0) {
+        console.error('GraphQL errors:', result.errors);
+        const errorMessage = result.errors.map((e: any) => e.message || JSON.stringify(e)).join(', ');
+        alert(`Failed to update todo: ${errorMessage}`);
+        return;
+      }
+      
+      if (!result.data) {
+        console.error('No data returned from update');
+        alert('Update completed but no data returned. Please refresh the page.');
+      }
+    } catch (error: any) {
       console.error('Error updating todo:', error);
+      console.error('Error details:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        cause: error?.cause
+      });
+      
+      // Check for the specific schema error
+      const errorMessage = error?.message || '';
+      const isSchemaError = errorMessage.includes('isReadOnly') || 
+                           errorMessage.includes('fields7') || 
+                           errorMessage.includes('Cannot destructure');
+      
+      if (isSchemaError) {
+        alert('⚠️ Schema Mismatch Detected!\n\nThe backend schema needs to be updated.\n\nPlease:\n1. Stop the Amplify sandbox (Ctrl+C in the terminal)\n2. Run: npx ampx sandbox\n3. Wait for the deployment to complete\n4. Refresh this page\n\nThis will add the isDone field to your database.');
+      } else if (errorMessage.includes('isDone')) {
+        alert('The isDone field may not exist in the database yet. Please restart the Amplify sandbox to apply schema changes.');
+      } else if (errorMessage) {
+        alert(`Failed to update todo: ${errorMessage}`);
+      } else {
+        alert('Failed to update todo. Please check the browser console for details.');
+      }
     }
   }
 
@@ -85,9 +176,10 @@ function App() {
   }
 
   const filteredTodos = todos.filter(todo => {
+    const isCompleted = todo.isDone === true;
     const matchesFilter = filter === 'all' 
-      || (filter === 'active' && !todo.isDone)
-      || (filter === 'completed' && todo.isDone);
+      || (filter === 'active' && !isCompleted)
+      || (filter === 'completed' && isCompleted);
     
     const matchesSearch = !searchQuery.trim() 
       || todo.content?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -95,8 +187,11 @@ function App() {
     return matchesFilter && matchesSearch;
   });
 
-  const activeCount = todos.filter(t => !t.isDone).length;
-  const completedCount = todos.filter(t => t.isDone).length;
+  const activeCount = todos.filter(t => t.isDone !== true).length;
+  const completedCount = todos.filter(t => t.isDone === true).length;
+  
+  // Check if isDone field is available in the schema
+  const isDoneFieldAvailable = todos.length === 0 || todos.some(todo => 'isDone' in todo);
 
   return (
     <div className="app-container">
@@ -125,6 +220,13 @@ function App() {
             <span className="stat-label">Completed</span>
           </div>
         </div>
+
+        {!isDoneFieldAvailable && todos.length > 0 && (
+          <div className="schema-warning">
+            ⚠️ <strong>Schema Update Required:</strong> The completion feature requires a backend update. 
+            Please restart the Amplify sandbox (<code>npx ampx sandbox</code>) and refresh this page.
+          </div>
+        )}
 
         <div className="todo-input-section">
           <div className="input-container">
@@ -192,14 +294,21 @@ function App() {
               {filteredTodos.map((todo) => (
                 <li 
                   key={todo.id} 
-                  className={`todo-item ${todo.isDone ? 'completed' : ''}`}
+                  className={`todo-item ${todo.isDone === true ? 'completed' : ''}`}
                 >
                   <div className="todo-content-wrapper">
                     <input
                       type="checkbox"
                       className="todo-checkbox"
-                      checked={todo.isDone || false}
-                      onChange={() => toggleTodo(todo.id, todo.isDone || false)}
+                      checked={todo.isDone === true}
+                      disabled={!isDoneFieldAvailable}
+                      title={!isDoneFieldAvailable ? 'Schema update required - restart Amplify sandbox' : 'Mark as complete'}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        if (isDoneFieldAvailable) {
+                          toggleTodo(todo.id, todo.isDone);
+                        }
+                      }}
                     />
                     {editingId === todo.id ? (
                       <input
@@ -254,10 +363,15 @@ function App() {
             <button
               className="clear-completed-btn"
               onClick={async () => {
-                const completedTodos = todos.filter(t => t.isDone);
-                await Promise.all(
-                  completedTodos.map(todo => client.models.Todo.delete({ id: todo.id }))
-                );
+                const completedTodos = todos.filter(t => t.isDone === true);
+                try {
+                  await Promise.all(
+                    completedTodos.map(todo => client.models.Todo.delete({ id: todo.id }))
+                  );
+                } catch (error) {
+                  console.error('Error clearing completed todos:', error);
+                  alert('Failed to clear completed todos. Please try again.');
+                }
               }}
             >
               Clear Completed ({completedCount})
