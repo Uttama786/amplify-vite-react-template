@@ -14,6 +14,17 @@ const schema = a.schema({
       dueDate: a.datetime(),
       reminderDate: a.datetime(),
       reminderSent: a.boolean().default(false),
+      createdBy: a.string(),
+      priority: a.enum(['low', 'medium', 'high']),
+    })
+    .authorization((allow) => [allow.publicApiKey()]),
+  
+  User: a
+    .model({
+      email: a.string().required(),
+      isAdmin: a.boolean().default(false),
+      notificationsEnabled: a.boolean().default(true),
+      createdAt: a.datetime(),
     })
     .authorization((allow) => [allow.publicApiKey()]),
 });

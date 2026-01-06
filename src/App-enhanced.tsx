@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import type { Schema } from "../amplify/data/resource";
 import { generateClient } from "aws-amplify/data";
-import { sendReminderEmail } from './utils/emailService';
 import './App.css';
 
 const client = generateClient<Schema>();
@@ -114,24 +113,21 @@ function App() {
       });
     }
 
-    // Send email via Lambda
-    if (userEmail && notificationsEnabled) {
-      try {
-        const emailSent = await sendReminderEmail({
+    // Send email via Lambda (if configured)
+    try {
+      const response = await fetch('YOUR_LAMBDA_ENDPOINT', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           email: userEmail,
-          todoContent: todo.content || '',
+          todoContent: todo.content,
           dueDate: todo.dueDate,
           reminderDate: todo.reminderDate,
-        });
-        
-        if (emailSent) {
-          console.log('✅ Email reminder sent successfully to:', userEmail);
-        } else {
-          console.log('⚠️ Email reminder failed. Make sure SES is configured and email is verified.');
-        }
-      } catch (error) {
-        console.error('Failed to send email reminder:', error);
-      }
+        }),
+      });
+      console.log('Email reminder sent:', response.ok);
+    } catch (error) {
+      console.error('Failed to send email reminder:', error);
     }
   }
 
