@@ -11,6 +11,9 @@ const schema = a.schema({
     .model({
       content: a.string().required(),
       isDone: a.boolean().default(false),
+      dueDate: a.datetime(),
+      reminderDate: a.datetime(),
+      reminderSent: a.boolean().default(false),
     })
     .authorization((allow) => [allow.publicApiKey()]),
 });

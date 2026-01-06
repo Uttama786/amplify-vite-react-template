@@ -44,7 +44,7 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  async function createTodo() {
+zz  async function createTodo() {
     if (!newTodoContent.trim()) return;
     try {
       // Try to create with isDone field, but handle gracefully if it doesn't exist
